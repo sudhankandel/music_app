@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Music Subscription App</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<section class="view page-center">
+  <div class="auth-box">
+    <h2>Login</h2>
+
+    <!-- removed action, added id -->
+    <form id="loginForm">
+      <label>Email</label>
+      <input type="email" id="email" required>
+
+      <label>Password</label>
+      <input type="password" id="password" required>
+
+      <button type="submit">Login</button>
+    </form>
+
+    <!-- keep same UI -->
+    <p id="message" class="message"></p>
+
+    <p class="hint">No account? <a href="/register">Register</a></p>
+  </div>
+</section>
+
+<script>
+document.getElementById("loginForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    window.location.href = "/main";
+  } else {
+    document.getElementById("message").innerText = data.message;
+  }
+});
+</script>
+
+</body>
+</html>

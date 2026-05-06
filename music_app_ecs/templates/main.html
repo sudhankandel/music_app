@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Main Page</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<section id="mainView" class="dashboard">
+
+  <!-- Top -->
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Music Subscription Portal</p>
+      <h2>Main Dashboard</h2>
+    </div>
+
+    <div class="topbar-right">
+      <div class="user-pill">
+        <span class="avatar" id="avatar">U</span>
+        <div>
+          <span class="small">Welcome back</span>
+          <strong id="userName">User</strong>
+        </div>
+      </div>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </header>
+
+  <main class="main-grid">
+
+    <!-- Profile -->
+    <section class="area profile-card">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Account</p>
+          <h3>User Area</h3>
+        </div>
+      </div>
+
+      <div class="profile-box">
+        <div class="big-avatar" id="bigAvatar">U</div>
+        <p class="small">Logged in user</p>
+        <h2 id="userNameText">User</h2>
+      </div>
+    </section>
+
+    <!-- Subscription -->
+    <section class="area">
+      <div class="section-title">
+        <h3>Subscription Area</h3>
+      </div>
+
+      <div id="subscriptions" class="cards-list"></div>
+    </section>
+
+    <!-- Query -->
+    <section class="area query-area">
+      <div class="section-title">
+        <h3>Query Area</h3>
+      </div>
+
+      <form id="queryForm" class="query-form">
+        <div class="query-fields">
+          <input type="text" name="title" placeholder="Title">
+          <input type="number" name="year" placeholder="Year">
+          <input type="text" name="artist" placeholder="Artist">
+          <input type="text" name="album" placeholder="Album">
+        </div>
+
+        <button type="submit">Query Music</button>
+      </form>
+
+      <p id="message" class="message"></p>
+
+      <div id="results" class="cards-list"></div>
+    </section>
+
+  </main>
+</section>
+
+<script>
+/* ================= USER ================= */
+async function loadUser() {
+  const res = await fetch("/api/me");
+  if (res.status !== 200) {
+    window.location.href = "/login";
+    return;
+  }
+
+  const data = await res.json();
+
+  document.getElementById("userName").innerText = data.user_name;
+  document.getElementById("userNameText").innerText = data.user_name;
+  document.getElementById("avatar").innerText = data.user_name[0].toUpperCase();
+  document.getElementById("bigAvatar").innerText = data.user_name[0].toUpperCase();
+}
+
+/* ================= QUERY ================= */
+document.getElementById("queryForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const params = new URLSearchParams(new FormData(e.target));
+
+  const res = await fetch("/api/music?" + params.toString());
+  const data = await res.json();
+
+  const resultsDiv = document.getElementById("results");
+  const msg = document.getElementById("message");
+
+  resultsDiv.innerHTML = "";
+
+  if (!data.success) {
+    msg.innerText = data.message;
+    return;
+  }
+
+  msg.innerText = "";
+
+  data.results.forEach(song => {
+    const songData = encodeURIComponent(JSON.stringify(song));
+
+    resultsDiv.innerHTML += `
+      <div class="song-card">
+        <img class="artist-img" src="${song.image_url}" alt="${song.artist}">
+        <div>
+          <h4>${song.title}</h4>
+          <p>${song.artist}</p>
+          <small>${song.year} • ${song.album}</small><br>
+          <button onclick="subscribe('${songData}')">Subscribe</button>
+        </div>
+      </div>
+    `;
+  });
+});
+
+/* ================= SUBSCRIBE ================= */
+async function subscribe(songData) {
+  const song = JSON.parse(decodeURIComponent(songData));
+
+  await fetch("/api/subscriptions", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      title: song.title,
+      artist: song.artist,
+      year: song.year,
+      album: song.album,
+      image_key: song.image_key
+    })
+  });
+
+  loadSubscriptions();
+}
+
+/* ================= LOAD SUBSCRIPTIONS ================= */
+async function loadSubscriptions() {
+  const res = await fetch("/api/subscriptions");
+  const data = await res.json();
+
+  const div = document.getElementById("subscriptions");
+  div.innerHTML = "";
+
+  if (!data.success || data.subscriptions.length === 0) {
+    div.innerHTML = `<p class="small">No subscriptions yet.</p>`;
+    return;
+  }
+
+  data.subscriptions.forEach(song => {
+    div.innerHTML += `
+      <div class="song-card">
+        <img class="artist-img" src="${song.image_url}" alt="${song.artist}">
+        <div>
+          <h4>${song.title}</h4>
+          <p>${song.artist}</p>
+          <small>${song.year} • ${song.album}</small><br>
+          <button class="danger" onclick="removeSub('${encodeURIComponent(song.title)}')">Remove</button>
+        </div>
+      </div>
+    `;
+  });
+}
+
+/* ================= REMOVE ================= */
+async function removeSub(title) {
+  await fetch("/api/subscriptions/" + title, {
+    method: "DELETE"
+  });
+
+  loadSubscriptions();
+}
+
+/* ================= LOGOUT ================= */
+async function logout() {
+  await fetch("/api/logout", { method: "POST" });
+  window.location.href = "/login";
+}
+
+/* ================= INIT ================= */
+loadUser();
+loadSubscriptions();
+</script>
+
+</body>
+</html>

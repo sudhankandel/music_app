@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<section class="view page-center">
+  <div class="auth-box">
+    <h2>Register</h2>
+
+    <!-- removed action, added id -->
+    <form id="registerForm">
+      <label>Email</label>
+      <input type="email" id="email" required>
+
+      <label>Username</label>
+      <input type="text" id="user_name" required>
+
+      <label>Password</label>
+      <input type="password" id="password" required>
+
+      <button type="submit">Register</button>
+    </form>
+
+    <p id="message" class="message"></p>
+
+    <p class="hint">Already have an account? <a href="/login">Login</a></p>
+  </div>
+</section>
+
+<script>
+const REGISTER_API = " https://wn4widaisl.execute-api.us-east-1.amazonaws.com/default/register";
+
+document.getElementById("registerForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+
+  const email = document.getElementById("email").value;
+  const user_name = document.getElementById("user_name").value;
+  const password = document.getElementById("password").value;
+  const message = document.getElementById("message");
+
+  message.innerText = "Registering...";
+
+  try {
+    const res = await fetch(REGISTER_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, user_name, password })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      message.innerText = "Registration successful. Redirecting to login...";
+      window.location.href = "login.html";
+    } else {
+      message.innerText = data.message;
+    }
+
+  } catch (error) {
+    message.innerText = "Registration failed. Please check API Gateway CORS or endpoint.";
+    console.error(error);
+  }
+});
+</script>
+
+
+</body>
+</html>
