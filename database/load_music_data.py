@@ -30,17 +30,17 @@ def create_bucket_if_not_exists():
         print(f"S3 bucket created: {BUCKET_NAME}")
 
 
-def get_filename(image_url, artist, title):
+def get_filename(image_url, artist, album, title):
     filename = os.path.basename(urlparse(image_url).path)
 
     if not filename:
-        filename = f"{artist}_{title}.jpg"
+        filename = f"{artist}_{album}_{title}.jpg"
 
     filename = filename.replace(" ", "_").replace("/", "_")
     return filename
 
 
-def upload_image_to_s3(image_url, artist, title):
+def upload_image_to_s3(image_url, artist, album, title):
     if not image_url:
         return None
 
@@ -48,7 +48,7 @@ def upload_image_to_s3(image_url, artist, title):
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
 
-        filename = get_filename(image_url, artist, title)
+        filename = get_filename(image_url, artist, album, title)
         s3_key = f"{S3_FOLDER}/{filename}"
 
         s3.put_object(
@@ -68,6 +68,13 @@ def upload_image_to_s3(image_url, artist, title):
 def clean_song_item(song, image_key):
     item = song.copy()
 
+    artist = item.get("artist", "unknown_artist")
+    album = item.get("album", "unknown_album")
+    title = item.get("title", "unknown_title")
+
+    # Composite sort key for DynamoDB
+    item["album_title"] = f"{album}#{title}"
+
     # Remove raw/external image URL columns
     item.pop("img_url", None)
     item.pop("image", None)
@@ -76,7 +83,7 @@ def clean_song_item(song, image_key):
     # Store only S3 image key
     item["image_key"] = image_key
 
-    # Remove empty None values because DynamoDB does not accept None
+    # Remove None values because DynamoDB does not accept None
     item = {key: value for key, value in item.items() if value is not None}
 
     return item
@@ -94,16 +101,22 @@ def load_songs(file_path):
         for song in songs_list:
             try:
                 artist = song.get("artist", "unknown_artist")
+                album = song.get("album", "unknown_album")
                 title = song.get("title", "unknown_title")
-                image_url = song.get("img_url")
 
-                image_key = upload_image_to_s3(image_url, artist, title)
+                image_url = (
+                    song.get("img_url")
+                    or song.get("image_url")
+                    or song.get("image")
+                )
+
+                image_key = upload_image_to_s3(image_url, artist, album, title)
 
                 clean_item = clean_song_item(song, image_key)
 
                 table.put_item(Item=clean_item)
 
-                print(f"Loaded: {artist} - {title}")
+                print(f"Loaded: {artist} - {album} - {title}")
 
             except Exception as e:
                 print(f"Skipped song: {song.get('title')} - Error: {e}")

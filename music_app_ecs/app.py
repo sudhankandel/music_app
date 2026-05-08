@@ -7,6 +7,9 @@ app.secret_key = "abc123"  # required for session
 # Register API routes
 app.register_blueprint(api_bp)
 
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
 
 @app.route("/")
 def home():
@@ -29,4 +32,4 @@ def main_page():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=5000)
