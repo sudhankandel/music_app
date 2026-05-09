@@ -6,11 +6,11 @@ table = dynamodb.create_table(
     TableName="subscriptions",
     KeySchema=[
         {"AttributeName": "email", "KeyType": "HASH"},
-        {"AttributeName": "title", "KeyType": "RANGE"}
+        {"AttributeName": "subscription_id", "KeyType": "RANGE"}
     ],
     AttributeDefinitions=[
         {"AttributeName": "email", "AttributeType": "S"},
-        {"AttributeName": "title", "AttributeType": "S"}
+        {"AttributeName": "subscription_id", "AttributeType": "S"}
     ],
     BillingMode="PAY_PER_REQUEST"
 )
