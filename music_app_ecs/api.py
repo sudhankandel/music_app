@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, session
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from aws_config import (
     login_table,
     music_table,
@@ -24,6 +24,15 @@ def generate_image_url(image_key):
         },
         ExpiresIn=3600
     )
+
+
+# ===================== HELPER FOR SUBSCRIPTION KEY =====================
+def create_subscription_id(artist, album, title):
+    artist = artist or "unknown_artist"
+    album = album or "unknown_album"
+    title = title or "unknown_title"
+
+    return f"{artist}#{album}#{title}"
 
 
 # ===================== LOGIN =====================
@@ -55,6 +64,7 @@ def api_login():
         })
 
     except Exception as e:
+        print("LOGIN error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -87,6 +97,7 @@ def api_register():
         })
 
     except Exception as e:
+        print("REGISTER error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -142,7 +153,6 @@ def api_music():
         response = music_table.scan(FilterExpression=filter_expression)
         results = response.get("Items", [])
 
-    
         for song in results:
             song["image_url"] = generate_image_url(song.get("image_key"))
 
@@ -160,6 +170,7 @@ def api_music():
         })
 
     except Exception as e:
+        print("MUSIC QUERY error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -170,8 +181,8 @@ def api_get_subscriptions():
         return jsonify({"success": False, "message": "Not logged in"}), 401
 
     try:
-        response = subscription_table.scan(
-            FilterExpression=Attr("email").eq(session["email"])
+        response = subscription_table.query(
+            KeyConditionExpression=Key("email").eq(session["email"])
         )
 
         subscriptions = response.get("Items", [])
@@ -185,6 +196,7 @@ def api_get_subscriptions():
         })
 
     except Exception as e:
+        print("GET SUBSCRIPTIONS error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -197,14 +209,21 @@ def api_subscribe():
     data = request.get_json()
 
     try:
+        title = data.get("title")
+        artist = data.get("artist")
+        album = data.get("album")
+
+        subscription_id = create_subscription_id(artist, album, title)
+
         subscription_table.put_item(
             Item={
                 "email": session["email"],
-                "title": data.get("title"),
-                "artist": data.get("artist"),
+                "subscription_id": subscription_id,
+                "title": title,
+                "artist": artist,
                 "year": data.get("year"),
-                "album": data.get("album"),
-                "image_key": data.get("image_key") 
+                "album": album,
+                "image_key": data.get("image_key")
             }
         )
 
@@ -214,6 +233,7 @@ def api_subscribe():
         })
 
     except Exception as e:
+        print("POST SUBSCRIPTION error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -224,10 +244,15 @@ def api_remove_subscription(title):
         return jsonify({"success": False, "message": "Not logged in"}), 401
 
     try:
+        artist = request.args.get("artist")
+        album = request.args.get("album")
+
+        subscription_id = create_subscription_id(artist, album, title)
+
         subscription_table.delete_item(
             Key={
                 "email": session["email"],
-                "title": title
+                "subscription_id": subscription_id
             }
         )
 
@@ -237,6 +262,7 @@ def api_remove_subscription(title):
         })
 
     except Exception as e:
+        print("DELETE SUBSCRIPTION error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
 
 

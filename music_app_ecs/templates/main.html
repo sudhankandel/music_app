@@ -176,7 +176,11 @@ async function loadSubscriptions() {
           <h4>${song.title}</h4>
           <p>${song.artist}</p>
           <small>${song.year} • ${song.album}</small><br>
-          <button class="danger" onclick="removeSub('${encodeURIComponent(song.title)}')">Remove</button>
+          <button class="remove" onclick='removeSubscription(
+    ${JSON.stringify(song.title)},
+    ${JSON.stringify(song.artist)},
+    ${JSON.stringify(song.album)}
+)'>Remove</button>
         </div>
       </div>
     `;
@@ -184,12 +188,22 @@ async function loadSubscriptions() {
 }
 
 /* ================= REMOVE ================= */
-async function removeSub(title) {
-  await fetch("/api/subscriptions/" + title, {
-    method: "DELETE"
-  });
+async function removeSubscription(title, artist, album) {
+    const params = new URLSearchParams({
+        artist: artist,
+        album: album
+    });
 
-  loadSubscriptions();
+    const res = await fetch(
+        `/api/subscriptions/${encodeURIComponent(title)}?${params.toString()}`,
+        {
+            method: "DELETE"
+        }
+    );
+
+    const data = await res.json();
+
+    loadSubscriptions();
 }
 
 /* ================= LOGOUT ================= */
