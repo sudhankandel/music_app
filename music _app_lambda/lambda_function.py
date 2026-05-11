@@ -1,9 +1,7 @@
 # lambda_function.py
 
 import json
-import os
-import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from aws_config import (
     login_table,
     music_table,
@@ -29,7 +27,7 @@ def response(status_code, body):
 def get_body(event):
     try:
         return json.loads(event.get("body") or "{}")
-    except:
+    except Exception:
         return {}
 
 
@@ -45,6 +43,13 @@ def generate_image_url(image_key):
         },
         ExpiresIn=3600
     )
+
+
+def create_subscription_id(artist, album, title):
+    artist = artist or "unknown_artist"
+    album = album or "unknown_album"
+    title = title or "unknown_title"
+    return f"{artist}#{album}#{title}"
 
 
 def lambda_handler(event, context):
@@ -69,8 +74,11 @@ def lambda_handler(event, context):
     if path == "/subscriptions" and method == "POST":
         return add_subscription(event)
 
-    if path == "/subscriptions" and method == "DELETE":
+    if path.startswith("/subscriptions") and method == "DELETE":
         return remove_subscription(event)
+
+    if path == "/logout" and method == "POST":
+        return logout(event)
 
     return response(404, {
         "success": False,
@@ -90,27 +98,35 @@ def login(event):
             "message": "Email and password are required"
         })
 
-    result = login_table.get_item(Key={"email": email})
-    user = result.get("Item")
+    try:
+        result = login_table.get_item(Key={"email": email})
+        user = result.get("Item")
 
-    if not user:
-        return response(404, {
-            "success": False,
-            "message": "User not found"
+        if not user:
+            return response(404, {
+                "success": False,
+                "message": "User not found"
+            })
+
+        if user.get("password") != password:
+            return response(401, {
+                "success": False,
+                "message": "Invalid password"
+            })
+
+        return response(200, {
+            "success": True,
+            "message": "Login successful",
+            "email": email,
+            "user_name": user.get("user_name")
         })
 
-    if user.get("password") != password:
-        return response(401, {
+    except Exception as e:
+        print("LOGIN error:", e)
+        return response(500, {
             "success": False,
-            "message": "Invalid password"
+            "message": str(e)
         })
-
-    return response(200, {
-        "success": True,
-        "message": "Login successful",
-        "email": user.get("email"),
-        "user_name": user.get("user_name")
-    })
 
 
 def register(event):
@@ -126,26 +142,34 @@ def register(event):
             "message": "Email, user name, and password are required"
         })
 
-    existing = login_table.get_item(Key={"email": email}).get("Item")
+    try:
+        existing = login_table.get_item(Key={"email": email}).get("Item")
 
-    if existing:
-        return response(409, {
-            "success": False,
-            "message": "User already exists"
+        if existing:
+            return response(409, {
+                "success": False,
+                "message": "User already exists"
+            })
+
+        login_table.put_item(
+            Item={
+                "email": email,
+                "user_name": user_name,
+                "password": password
+            }
+        )
+
+        return response(201, {
+            "success": True,
+            "message": "Registration successful"
         })
 
-    login_table.put_item(
-        Item={
-            "email": email,
-            "user_name": user_name,
-            "password": password
-        }
-    )
-
-    return response(201, {
-        "success": True,
-        "message": "Registration successful"
-    })
+    except Exception as e:
+        print("REGISTER error:", e)
+        return response(500, {
+            "success": False,
+            "message": str(e)
+        })
 
 
 def query_music(event):
@@ -163,41 +187,49 @@ def query_music(event):
             "results": []
         })
 
-    filter_expression = None
+    try:
+        filter_expression = None
 
-    if title:
-        filter_expression = Attr("title").contains(title)
+        if title:
+            filter_expression = Attr("title").contains(title)
 
-    if year:
-        condition = Attr("year").eq(year)
-        filter_expression = condition if filter_expression is None else filter_expression & condition
+        if year:
+            condition = Attr("year").eq(year)
+            filter_expression = condition if filter_expression is None else filter_expression & condition
 
-    if artist:
-        condition = Attr("artist").contains(artist)
-        filter_expression = condition if filter_expression is None else filter_expression & condition
+        if artist:
+            condition = Attr("artist").contains(artist)
+            filter_expression = condition if filter_expression is None else filter_expression & condition
 
-    if album:
-        condition = Attr("album").contains(album)
-        filter_expression = condition if filter_expression is None else filter_expression & condition
+        if album:
+            condition = Attr("album").contains(album)
+            filter_expression = condition if filter_expression is None else filter_expression & condition
 
-    result = music_table.scan(FilterExpression=filter_expression)
-    songs = result.get("Items", [])
+        result = music_table.scan(FilterExpression=filter_expression)
+        songs = result.get("Items", [])
 
-    for song in songs:
-        song["image_url"] = generate_image_url(song.get("image_key"))
+        for song in songs:
+            song["image_url"] = generate_image_url(song.get("image_key"))
 
-    if not songs:
+        if not songs:
+            return response(200, {
+                "success": False,
+                "message": "No result is retrieved. Please query again",
+                "results": []
+            })
+
         return response(200, {
-            "success": False,
-            "message": "No result is retrieved. Please query again",
-            "results": []
+            "success": True,
+            "message": "Results retrieved",
+            "results": songs
         })
 
-    return response(200, {
-        "success": True,
-        "message": "Results retrieved",
-        "results": songs
-    })
+    except Exception as e:
+        print("MUSIC QUERY error:", e)
+        return response(500, {
+            "success": False,
+            "message": str(e)
+        })
 
 
 def get_subscriptions(event):
@@ -210,19 +242,27 @@ def get_subscriptions(event):
             "message": "Email is required"
         })
 
-    result = subscription_table.scan(
-        FilterExpression=Attr("email").eq(email)
-    )
+    try:
+        result = subscription_table.query(
+            KeyConditionExpression=Key("email").eq(email)
+        )
 
-    subscriptions = result.get("Items", [])
+        subscriptions = result.get("Items", [])
 
-    for song in subscriptions:
-        song["image_url"] = generate_image_url(song.get("image_key"))
+        for song in subscriptions:
+            song["image_url"] = generate_image_url(song.get("image_key"))
 
-    return response(200, {
-        "success": True,
-        "subscriptions": subscriptions
-    })
+        return response(200, {
+            "success": True,
+            "subscriptions": subscriptions
+        })
+
+    except Exception as e:
+        print("GET SUBSCRIPTIONS error:", e)
+        return response(500, {
+            "success": False,
+            "message": str(e)
+        })
 
 
 def add_subscription(event):
@@ -231,9 +271,7 @@ def add_subscription(event):
     email = data.get("email")
     title = data.get("title")
     artist = data.get("artist")
-    year = data.get("year")
     album = data.get("album")
-    image_key = data.get("image_key")
 
     if not email or not title:
         return response(400, {
@@ -241,28 +279,42 @@ def add_subscription(event):
             "message": "Email and title are required"
         })
 
-    subscription_table.put_item(
-        Item={
-            "email": email,
-            "title": title,
-            "artist": artist,
-            "year": year,
-            "album": album,
-            "image_key": image_key
-        }
-    )
+    try:
+        subscription_id = create_subscription_id(artist, album, title)
 
-    return response(201, {
-        "success": True,
-        "message": "Subscribed successfully"
-    })
+        subscription_table.put_item(
+            Item={
+                "email": email,
+                "subscription_id": subscription_id,
+                "title": title,
+                "artist": artist,
+                "year": data.get("year"),
+                "album": album,
+                "image_key": data.get("image_key")
+            }
+        )
+
+        return response(201, {
+            "success": True,
+            "message": "Subscribed successfully"
+        })
+
+    except Exception as e:
+        print("POST SUBSCRIPTION error:", e)
+        return response(500, {
+            "success": False,
+            "message": str(e)
+        })
 
 
 def remove_subscription(event):
+    params = event.get("queryStringParameters") or {}
     data = get_body(event)
 
-    email = data.get("email")
-    title = data.get("title")
+    email = params.get("email") or data.get("email")
+    title = params.get("title") or data.get("title")
+    artist = params.get("artist") or data.get("artist")
+    album = params.get("album") or data.get("album")
 
     if not email or not title:
         return response(400, {
@@ -270,14 +322,31 @@ def remove_subscription(event):
             "message": "Email and title are required"
         })
 
-    subscription_table.delete_item(
-        Key={
-            "email": email,
-            "title": title
-        }
-    )
+    try:
+        subscription_id = create_subscription_id(artist, album, title)
 
+        subscription_table.delete_item(
+            Key={
+                "email": email,
+                "subscription_id": subscription_id
+            }
+        )
+
+        return response(200, {
+            "success": True,
+            "message": "Subscription removed"
+        })
+
+    except Exception as e:
+        print("DELETE SUBSCRIPTION error:", e)
+        return response(500, {
+            "success": False,
+            "message": str(e)
+        })
+
+
+def logout(event):
     return response(200, {
         "success": True,
-        "message": "Subscription removed"
+        "message": "Logged out successfully"
     })

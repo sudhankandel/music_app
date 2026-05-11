@@ -152,7 +152,7 @@ async function subscribe(songData) {
 
   const song = JSON.parse(decodeURIComponent(songData));
 
-  await fetch(API.subscriptions, {
+  const res = await fetch(API.subscriptions, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -166,6 +166,12 @@ async function subscribe(songData) {
     })
   });
 
+  const data = await res.json();
+
+  if (!data.success) {
+    return;
+  }
+
   loadSubscriptions();
 }
 
@@ -173,7 +179,10 @@ async function loadSubscriptions() {
   const user = getCurrentUser();
   if (!user) return;
 
-  const res = await fetch(`${API.subscriptions}?email=${encodeURIComponent(user.email)}`);
+  const res = await fetch(
+    `${API.subscriptions}?email=${encodeURIComponent(user.email)}`
+  );
+
   const data = await res.json();
 
   const div = document.getElementById("subscriptions");
@@ -185,8 +194,11 @@ async function loadSubscriptions() {
   }
 
   data.subscriptions.forEach(song => {
-    const title = encodeURIComponent(song.title || "");
-    const artist = encodeURIComponent(song.artist || "");
+    const songData = encodeURIComponent(JSON.stringify({
+      title: song.title || "",
+      artist: song.artist || "",
+      album: song.album || ""
+    }));
 
     div.innerHTML += `
       <div class="song-card">
@@ -195,26 +207,35 @@ async function loadSubscriptions() {
           <h4>${song.title || ""}</h4>
           <p>${song.artist || ""}</p>
           <small>${song.year || ""} • ${song.album || ""}</small><br>
-          <button class="danger" onclick="removeSub('${title}', '${artist}')">Remove</button>
+          <button class="danger" onclick="removeSub('${songData}')">Remove</button>
         </div>
       </div>
     `;
   });
 }
 
-async function removeSub(title, artist) {
+async function removeSub(songData) {
   const user = getCurrentUser();
   if (!user) return;
 
-  await fetch(API.subscriptions, {
+  const song = JSON.parse(decodeURIComponent(songData));
+
+  const res = await fetch(API.subscriptions, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email: user.email,
-      title: decodeURIComponent(title),
-      artist: decodeURIComponent(artist)
+      title: song.title,
+      artist: song.artist,
+      album: song.album
     })
   });
+
+  const data = await res.json();
+
+  if (!data.success) {
+    return;
+  }
 
   loadSubscriptions();
 }
